@@ -2,29 +2,29 @@ services:
   # ─── Banco de Dados ───────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: grupospy_postgres
+    container_name: grupodozap_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: grupospy
-      POSTGRES_USER: grupospy
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grupospy_secret}
+      POSTGRES_DB: grupodozap
+      POSTGRES_USER: grupodozap
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-grupodozap_secret}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/init.sql:/docker-entrypoint-initdb.d/01_init.sql
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U grupospy"]
+      test: ["CMD-SHELL", "pg_isready -U grupodozap"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - grupospy_net
+      - grupodozap_net
 
   # ─── Cache + Filas ────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: grupospy_redis
+    container_name: grupodozap_redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret} --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
@@ -37,19 +37,19 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - grupospy_net
+      - grupodozap_net
 
   # ─── API Backend ──────────────────────────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: grupospy_backend
+    container_name: grupodozap_backend
     restart: unless-stopped
     env_file: .env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://grupospy:${POSTGRES_PASSWORD:-grupospy_secret}@postgres:5432/grupospy
+      DATABASE_URL: postgresql://grupodozap:${POSTGRES_PASSWORD:-grupodozap_secret}@postgres:5432/grupodozap
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
     ports:
       - "3001:3001"
@@ -62,7 +62,7 @@ services:
       - ./backend:/app
       - /app/node_modules
     networks:
-      - grupospy_net
+      - grupodozap_net
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
       interval: 15s
@@ -74,12 +74,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
-    container_name: grupospy_worker
+    container_name: grupodozap_worker
     restart: unless-stopped
     env_file: .env
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://grupospy:${POSTGRES_PASSWORD:-grupospy_secret}@postgres:5432/grupospy
+      DATABASE_URL: postgresql://grupodozap:${POSTGRES_PASSWORD:-grupodozap_secret}@postgres:5432/grupodozap
       REDIS_URL: redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379
     depends_on:
       postgres:
@@ -90,14 +90,14 @@ services:
       - ./backend:/app
       - /app/node_modules
     networks:
-      - grupospy_net
+      - grupodozap_net
 
   # ─── Frontend Next.js ─────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: grupospy_frontend
+    container_name: grupodozap_frontend
     restart: unless-stopped
     env_file: .env
     environment:
@@ -108,12 +108,12 @@ services:
     depends_on:
       - backend
     networks:
-      - grupospy_net
+      - grupodozap_net
 
   # ─── Nginx Reverse Proxy ──────────────────────────────────────
   nginx:
     image: nginx:alpine
-    container_name: grupospy_nginx
+    container_name: grupodozap_nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -125,12 +125,12 @@ services:
       - backend
       - frontend
     networks:
-      - grupospy_net
+      - grupodozap_net
 
 volumes:
   postgres_data:
   redis_data:
 
 networks:
-  grupospy_net:
+  grupodozap_net:
     driver: bridge

@@ -3,10 +3,11 @@ import cron from 'node-cron'
 import { redis } from './db/redis.js'
 import { processWebhookEvent } from './services/webhookProcessor.js'
 import { generateDailySummary, batchSentimentAnalysis, calculateHeatScore } from './services/ai.js'
+import { syncGroupsForNumber } from './services/syncService.js'
 import sql from './db/connection.js'
 import * as uazapi from './services/uazapi.js'
 
-console.log('⚙️  GrupoSpy Worker iniciando...')
+console.log('⚙️  Grupo do Zap Worker iniciando...')
 
 // ─── Worker: Webhook ──────────────────────────────────────────
 
@@ -264,6 +265,23 @@ cron.schedule('0 9 * * 1', async () => {
   // Resumo semanal usa as msgs dos últimos 7 dias — implementação futura
   console.log(`[CRON] ${groups.length} grupos para resumo semanal`)
 }, { timezone: 'America/Sao_Paulo' })
+
+// A cada 2 horas — Re-sync de grupos para números conectados
+cron.schedule('0 */2 * * *', async () => {
+  const numbers = await sql`
+    SELECT id, uazapi_token, uazapi_instance_id, tenant_id
+    FROM wa_numbers
+    WHERE status = 'connected'
+  `
+  for (const num of numbers) {
+    try {
+      await syncGroupsForNumber(num, num.tenantId, false)
+    } catch (err) {
+      console.error(`[CRON] Re-sync groups error for ${num.id}:`, err.message)
+    }
+  }
+  console.log(`[CRON] Re-sync groups para ${numbers.length} números`)
+})
 
 // 02:00 diário — Limpeza de dados antigos
 cron.schedule('0 2 * * *', async () => {

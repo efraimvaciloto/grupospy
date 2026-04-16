@@ -1,5 +1,6 @@
 import sql from '../db/connection.js'
 import { enqueueAI, publishRealtimeEvent } from '../db/redis.js'
+import { syncGroupsForNumber, syncMessagesForNumber, syncContactsForNumber } from './syncService.js'
 
 // Mapeador: Message uazapi → nossa tabela
 function mapMessage(m, groupId, waNumberId, tenantId) {
@@ -63,6 +64,10 @@ export async function processWebhookEvent(waNumberId, eventType, payload) {
       await handleSenderUpdate(payload)
       break
 
+    case 'contacts':
+      await handleContactsUpdate(waNumber, payload)
+      break
+
     case 'chats':
       await handleChatsUpdate(waNumber, payload)
       break
@@ -98,6 +103,22 @@ async function handleConnection(waNumber, data) {
       updated_at             = now()
     WHERE id = ${waNumber.id}
   `
+
+  // Disparar sync em background quando conectar
+  if (status === 'connected') {
+    const [fullNumber] = await sql`SELECT * FROM wa_numbers WHERE id = ${waNumber.id}`
+    if (fullNumber) {
+      syncGroupsForNumber(fullNumber, waNumber.tenantId, false)
+        .then(() => syncMessagesForNumber(fullNumber, waNumber.tenantId))
+        .then(() => syncContactsForNumber(fullNumber, waNumber.tenantId))
+        .catch(err => console.error('[Webhook] Sync error on connect:', err.message))
+
+      await publishRealtimeEvent(waNumber.tenantId, {
+        type: 'number:connected',
+        waNumberId: waNumber.id,
+      })
+    }
+  }
 
   // Alerta se desconectou inesperadamente
   if (status === 'disconnected') {
@@ -227,15 +248,21 @@ async function handleGroupsUpdate(waNumber, data) {
     const groupJid = u.id || u.JID
 
     await sql`
-      UPDATE groups SET
-        name         = COALESCE(${u.name || u.Name || null}, name),
-        member_count = COALESCE(${u.participants?.length || null}, member_count),
-        is_announce  = COALESCE(${u.IsAnnounce ?? null}, is_announce),
-        is_locked    = COALESCE(${u.IsLocked ?? null}, is_locked),
-        avatar_url   = COALESCE(${u.profilePicUrl || u.GroupPicture || u.picture || null}, avatar_url),
+      INSERT INTO groups (tenant_id, wa_number_id, wa_group_jid, name, member_count, is_announce, is_locked, avatar_url)
+      VALUES (
+        ${waNumber.tenantId}, ${waNumber.id}, ${groupJid},
+        ${u.name || u.Name || 'Grupo'},
+        ${u.participants?.length || u.Participants?.length || 0},
+        ${u.IsAnnounce ?? false}, ${u.IsLocked ?? false},
+        ${u.profilePicUrl || u.GroupPicture || u.picture || null}
+      )
+      ON CONFLICT (wa_number_id, wa_group_jid) DO UPDATE SET
+        name         = COALESCE(EXCLUDED.name, groups.name),
+        member_count = CASE WHEN EXCLUDED.member_count > 0 THEN EXCLUDED.member_count ELSE groups.member_count END,
+        is_announce  = COALESCE(EXCLUDED.is_announce, groups.is_announce),
+        is_locked    = COALESCE(EXCLUDED.is_locked, groups.is_locked),
+        avatar_url   = COALESCE(EXCLUDED.avatar_url, groups.avatar_url),
         updated_at   = now()
-      WHERE wa_number_id = ${waNumber.id}
-        AND wa_group_jid = ${groupJid}
     `
 
     publishRealtimeEvent(waNumber.tenantId, {
@@ -258,6 +285,26 @@ async function handleSenderUpdate(data) {
       updated_at    = now()
     WHERE uazapi_folder_id = ${data.folder_id}
   `
+}
+
+// ─── Contacts Update ─────────────────────────────────────────
+
+async function handleContactsUpdate(waNumber, data) {
+  const contacts = Array.isArray(data) ? data : [data]
+  for (const c of contacts) {
+    const raw = c.phone || c.number || c.jid || c.id || ''
+    const phone = raw.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '')
+    if (!phone || phone.length < 8) continue
+    const name = c.contact_name || c.contactName || c.name || c.pushname || c.notify || null
+    await sql`
+      INSERT INTO contacts (tenant_id, name, phone_number, wa_valid, imported_from)
+      VALUES (${waNumber.tenantId}, ${name || phone}, ${phone}, true, 'webhook')
+      ON CONFLICT (tenant_id, phone_number) DO UPDATE SET
+        name = COALESCE(NULLIF(EXCLUDED.name, EXCLUDED.phone_number), contacts.name),
+        wa_valid = true,
+        updated_at = now()
+    `
+  }
 }
 
 // ─── Chats Update ────────────────────────────────────────────

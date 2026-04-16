@@ -20,7 +20,7 @@ export const redisSub = new IORedis({
   enableReadyCheck: false,
 })
 
-const REALTIME_CHANNEL = 'grupospy:realtime'
+const REALTIME_CHANNEL = 'grupodozap:realtime'
 
 export async function publishRealtimeEvent(tenantId, event) {
   const payload = JSON.stringify({ tenantId, event })

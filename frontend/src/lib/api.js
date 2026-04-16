@@ -25,9 +25,18 @@ async function request(path, options = {}) {
     return
   }
 
+  if (res.status === 402) {
+    window.location.href = '/billing/upgrade?reason=trial_expired'
+    return
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
-    throw new Error(err.error || `HTTP ${res.status}`)
+    const e = new Error(err.error || `HTTP ${res.status}`)
+    e.code = err.error
+    e.statusCode = res.status
+    e.details = err
+    throw e
   }
 
   if (res.status === 204) return null
@@ -39,6 +48,8 @@ export const auth = {
   login:    (body) => request('/auth/login',    { method: 'POST', body }),
   register: (body) => request('/auth/register', { method: 'POST', body }),
   refresh:  (body) => request('/auth/refresh',  { method: 'POST', body }),
+  me:       ()     => request('/auth/me'),
+  updateMe: (body) => request('/auth/me',       { method: 'PATCH', body }),
 }
 
 // ─── Numbers ──────────────────────────────────────────────────
@@ -57,6 +68,7 @@ export const numbers = {
 // ─── Groups ───────────────────────────────────────────────────
 export const groups = {
   list:        (params = {}) => request('/groups?' + new URLSearchParams(params)),
+  listAll:     (params = {}) => request('/groups?' + new URLSearchParams({ ...params, all: 'true' })),
   get:         (id)          => request(`/groups/${id}`),
   update:      (id, body)    => request(`/groups/${id}`, { method: 'PATCH', body }),
   create:      (body)        => request('/groups/create', { method: 'POST', body }),
@@ -103,4 +115,14 @@ export const contacts = {
   remove:   (id)     => request(`/contacts/${id}`, { method: 'DELETE' }),
   import:   (body)   => request('/contacts/import', { method: 'POST', body }),
   validate: (body)   => request('/contacts/validate', { method: 'POST', body }),
+}
+
+// ─── Plans ────────────────────────────────────────────────────
+export const plans = {
+  list: () => request('/plans'),
+}
+
+// ─── Extra Groups ─────────────────────────────────────────────
+export const extraGroups = {
+  purchase: (quantity) => request('/tenants/extra-groups', { method: 'POST', body: { quantity } }),
 }

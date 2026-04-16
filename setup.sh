@@ -8,7 +8,7 @@ NC='\033[0m'
 
 echo ""
 echo "╔══════════════════════════════════════╗"
-echo "║       GrupoSpy — Setup Inicial       ║"
+echo "║       Grupo do Zap — Setup Inicial       ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
@@ -26,7 +26,7 @@ if [ ! -f .env ]; then
 fi
 
 # 3. Gerar secrets aleatórios no .env (se ainda forem os defaults)
-if grep -q "grupospy_secret_change_me" .env; then
+if grep -q "grupodozap_secret_change_me" .env; then
   echo -e "${YELLOW}Gerando secrets aleatórios...${NC}"
   PG_PASS=$(openssl rand -hex 16)
   RD_PASS=$(openssl rand -hex 16)
@@ -34,7 +34,7 @@ if grep -q "grupospy_secret_change_me" .env; then
   REF_SEC=$(openssl rand -hex 32)
   WH_SEC=$(openssl rand -hex 16)
 
-  sed -i "s/grupospy_secret_change_me/$PG_PASS/g" .env
+  sed -i "s/grupodozap_secret_change_me/$PG_PASS/g" .env
   sed -i "s/redis_secret_change_me/$RD_PASS/g"    .env
   sed -i "s/jwt_super_secret_change_me_32chars_min/$JWT_SEC/g" .env
   sed -i "s/refresh_super_secret_change_me/$REF_SEC/g"         .env
@@ -51,7 +51,7 @@ docker compose up -d
 
 # 5. Aguardar banco
 echo -e "${YELLOW}Aguardando banco de dados...${NC}"
-until docker compose exec -T postgres pg_isready -U grupospy -q; do
+until docker compose exec -T postgres pg_isready -U grupodozap -q; do
   sleep 2
 done
 echo -e "${GREEN}✓ PostgreSQL pronto${NC}"
@@ -66,14 +66,14 @@ echo -e "${GREEN}✓ API pronta${NC}"
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════╗"
-echo -e "║        GrupoSpy rodando! 🚀          ║"
+echo -e "║        Grupo do Zap rodando! 🚀          ║"
 echo -e "╠══════════════════════════════════════╣"
 echo -e "║  Frontend:  http://localhost:3000    ║"
 echo -e "║  API:       http://localhost:3001    ║"
 echo -e "║  Nginx:     http://localhost         ║"
 echo -e "╠══════════════════════════════════════╣"
 echo -e "║  Login admin padrão:                 ║"
-echo -e "║  admin@grupospy.com.br / admin123    ║"
+echo -e "║  admin@grupodozap.ai / admin123        ║"
 echo -e "║  ⚠  Troque a senha em produção!      ║"
 echo -e "╚══════════════════════════════════════╝${NC}"
 echo ""

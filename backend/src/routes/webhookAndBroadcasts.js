@@ -1,5 +1,5 @@
 import sql from '../db/connection.js'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, requireFeature } from '../middleware/auth.js'
 import { enqueueWebhook } from '../db/redis.js'
 import * as uazapi from '../services/uazapi.js'
 
@@ -96,8 +96,8 @@ export async function broadcastRoutes(fastify) {
     `
   })
 
-  // POST /broadcasts
-  fastify.post('/broadcasts', async (req, reply) => {
+  // POST /broadcasts — feature gate: broadcasts
+  fastify.post('/broadcasts', { preHandler: [requireFeature('broadcasts')] }, async (req, reply) => {
     const {
       name, waNumberId, messagesPayload, targetGroups,
       scheduledAt, delayMin = 3, delayMax = 8, recurrence
@@ -135,8 +135,8 @@ export async function broadcastRoutes(fastify) {
     return reply.status(201).send(broadcast)
   })
 
-  // POST /broadcasts/:id/send — enviar agora
-  fastify.post('/broadcasts/:id/send', async (req, reply) => {
+  // POST /broadcasts/:id/send — enviar agora (feature gate: broadcasts)
+  fastify.post('/broadcasts/:id/send', { preHandler: [requireFeature('broadcasts')] }, async (req, reply) => {
     const [broadcast] = await sql`
       SELECT b.*, w.uazapi_token FROM broadcasts b
       JOIN wa_numbers w ON w.id = b.wa_number_id

@@ -29,7 +29,7 @@ export async function createInstance(name, tenantId) {
   return request('/instance/create', {
     method: 'POST',
     adminToken: true,
-    body: { name, systemName: 'GrupoSpy', adminField01: tenantId },
+    body: { name, systemName: 'Grupo do Zap', adminField01: tenantId },
   })
 }
 
@@ -166,7 +166,7 @@ export async function sendText(token, number, text, opts = {}) {
     body: {
       number, text,
       async: opts.async || true,
-      track_source: opts.trackSource || 'grupospy',
+      track_source: opts.trackSource || 'grupodozap',
       track_id: opts.trackId,
       replyid: opts.replyid,
     },
@@ -176,7 +176,7 @@ export async function sendText(token, number, text, opts = {}) {
 export async function sendMedia(token, number, type, file, text = '', opts = {}) {
   return request('/send/media', {
     method: 'POST',
-    body: { number, type, file, text, async: true, track_source: 'grupospy', ...opts },
+    body: { number, type, file, text, async: true, track_source: 'grupodozap', ...opts },
   }, token)
 }
 

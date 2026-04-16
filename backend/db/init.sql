@@ -1,4 +1,4 @@
--- GrupoSpy — Schema PostgreSQL Completo
+-- Grupo do Zap — Schema PostgreSQL Completo
 -- Versão 2.0 | uazapiGO v2.0.1
 
 -- Extensões
@@ -472,4 +472,11 @@ INSERT INTO plans (name, slug, price_cents, max_numbers, max_groups, features) V
 
 -- Admin padrão (senha: admin123 — TROCAR EM PRODUÇÃO)
 INSERT INTO admin_users (email, password_hash) VALUES
-  ('admin@grupospy.com.br', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TiGTTbxAO8Q1Z5.4MiS5lGMcUBaO');
+  ('admin@grupodozap.ai', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TiGTTbxAO8Q1Z5.4MiS5lGMcUBaO');
+
+-- ─────────────────────────────────────────────────────────────
+-- MIGRATIONS: Plan Enforcement Columns
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS extra_groups_purchased INTEGER DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS extra_group_price_cents INTEGER DEFAULT 0;

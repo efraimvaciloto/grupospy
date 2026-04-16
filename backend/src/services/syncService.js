@@ -73,6 +73,8 @@ export async function syncGroupsForNumber(number, tenantId, force = false) {
     offset += pageSize
   }
 
+  await publishRealtimeEvent(tenantId, { type: 'groups:sync_complete', count: synced })
+
   return synced
 }
 
@@ -117,6 +119,8 @@ export async function syncMessagesForNumber(number, tenantId) {
       }
     } catch {}
   }
+  await publishRealtimeEvent(tenantId, { type: 'messages:sync_complete', count: total })
+
   return total
 }
 

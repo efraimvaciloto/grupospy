@@ -1,5 +1,5 @@
 import sql from '../db/connection.js'
-import { authenticate } from '../middleware/auth.js'
+import { authenticate, loadTenantPlan, requireFeature } from '../middleware/auth.js'
 import * as uazapi from '../services/uazapi.js'
 
 export default async function groupRoutes(fastify) {
@@ -8,8 +8,11 @@ export default async function groupRoutes(fastify) {
 
   // GET /groups
   fastify.get('/groups', async (req) => {
-    const { page = 1, limit = 20, search, tags, monitored } = req.query
+    const { page = 1, limit = 20, search, tags, monitored, all } = req.query
     const offset = (page - 1) * limit
+
+    // By default, show only monitored groups unless ?all=true is passed (admin/debug)
+    const monitoredFilter = all === 'true' ? null : true
 
     const rows = await sql`
       SELECT
@@ -26,13 +29,18 @@ export default async function groupRoutes(fastify) {
       JOIN wa_numbers w ON w.id = g.wa_number_id
       WHERE g.tenant_id = ${req.tenantId}
         AND g.is_archived = false
+        ${monitoredFilter !== null ? sql`AND g.is_monitored = ${monitoredFilter}` : sql``}
         ${search ? sql`AND g.name ILIKE ${'%' + search + '%'}` : sql``}
-        ${monitored !== undefined ? sql`AND g.is_monitored = ${monitored === 'true'}` : sql``}
+        ${monitored !== undefined && all === 'true' ? sql`AND g.is_monitored = ${monitored === 'true'}` : sql``}
       ORDER BY g.last_message_at DESC NULLS LAST
       LIMIT ${limit} OFFSET ${offset}
     `
 
-    const [{ count }] = await sql`SELECT COUNT(*) FROM groups WHERE tenant_id = ${req.tenantId} AND is_archived = false`
+    const [{ count }] = await sql`
+      SELECT COUNT(*) FROM groups
+      WHERE tenant_id = ${req.tenantId} AND is_archived = false
+        ${monitoredFilter !== null ? sql`AND is_monitored = ${monitoredFilter}` : sql``}
+    `
 
     return { data: rows, meta: { total: parseInt(count), page: parseInt(page), limit: parseInt(limit) } }
   })
@@ -53,6 +61,34 @@ export default async function groupRoutes(fastify) {
   // PATCH /groups/:id
   fastify.patch('/groups/:id', async (req, reply) => {
     const { tags, isMonitored, alertKeywords, label } = req.body
+
+    // Enforce group limit before activating monitoring
+    if (isMonitored === true) {
+      const plan = await loadTenantPlan(req.tenantId)
+      const maxGroups = plan?.maxGroups ?? 10
+      const extraGroups = plan?.extraGroupsPurchased ?? 0
+      const effectiveLimit = maxGroups === -1 ? Infinity : maxGroups + extraGroups
+
+      if (effectiveLimit !== Infinity) {
+        const [{ count }] = await sql`
+          SELECT COUNT(*) FROM groups
+          WHERE tenant_id = ${req.tenantId} AND is_monitored = true AND is_archived = false AND id != ${req.params.id}
+        `
+        if (parseInt(count) >= effectiveLimit) {
+          const extraPrice = maxGroups > 0
+            ? Math.round((plan?.priceCents || 0) / maxGroups)
+            : 0
+          return reply.status(403).send({
+            error: 'plan_limit_reached',
+            limit: effectiveLimit,
+            current: parseInt(count),
+            extraGroupPriceCents: extraPrice,
+            message: `Limite de ${effectiveLimit} grupos atingido.`,
+          })
+        }
+      }
+    }
+
     const [group] = await sql`
       UPDATE groups SET
         tags           = COALESCE(${tags || null}::text[], tags),
@@ -318,8 +354,8 @@ export default async function groupRoutes(fastify) {
     return summary || null
   })
 
-  // POST /groups/:id/summary/generate — forçar geração
-  fastify.post('/groups/:id/summary/generate', async (req, reply) => {
+  // POST /groups/:id/summary/generate — forçar geração (feature gate: ai_sentiment)
+  fastify.post('/groups/:id/summary/generate', { preHandler: [requireFeature('ai_sentiment')] }, async (req, reply) => {
     const { generateDailySummary } = await import('../services/ai.js')
     const date = req.body?.date || new Date().toISOString().slice(0, 10)
 

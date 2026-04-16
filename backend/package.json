@@ -1,14 +1,14 @@
 {
-  "name": "grupospy-backend",
+  "name": "grupodozap-backend",
   "version": "1.0.0",
-  "description": "GrupoSpy Backend API",
+  "description": "Grupo do Zap Backend API",
   "main": "src/server.js",
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
     "worker": "node src/worker.js",
-    "dev": "node --watch src/server.js",
-    "dev:worker": "node --watch src/worker.js"
+    "dev": "node --env-file=../.env --env-file=../.env.local --watch src/server.js",
+    "dev:worker": "node --env-file=../.env --env-file=../.env.local --watch src/worker.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
