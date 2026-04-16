@@ -78,6 +78,21 @@ export async function syncGroupsForNumber(number, tenantId, force = false) {
   return synced
 }
 
+// Extrai phone do JID ou do uazapi_id como fallback
+function extractPhone(sender, uazapiId) {
+  if (sender) {
+    const cleaned = sender.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '').slice(-13)
+    return cleaned || null
+  }
+  const prefix = String(uazapiId).split(':')[0]
+  return /^\d{8,15}$/.test(prefix) ? prefix : null
+}
+
+// Tenta múltiplos nomes de campo para o nome do remetente
+function extractName(m) {
+  return m.senderName || m.pushname || m.notifyName || m.author || m.name || null
+}
+
 // Baixa mensagens recentes de todos os grupos de um numero
 export async function syncMessagesForNumber(number, tenantId) {
   const groups = await sql`
@@ -91,15 +106,18 @@ export async function syncMessagesForNumber(number, tenantId) {
       const msgs = result?.messages || []
       for (const m of msgs) {
         if (!m.id) continue
+        const uazapiId = String(m.id).slice(0, 30)
+        const senderPhone = extractPhone(m.sender || m.from, uazapiId)
+        const senderName = extractName(m)
         await sql`
           INSERT INTO messages (
             tenant_id, group_id, wa_number_id, uazapi_id, wa_message_id,
-            wa_chat_id, sender_jid, sender_name, message_type, body,
+            wa_chat_id, sender_jid, sender_name, sender_phone, message_type, body,
             file_url, is_from_me, is_group, status, sent_at
           ) VALUES (
-            ${tenantId}, ${group.id}, ${number.id}, ${m.id}, ${m.messageid || m.id},
-            ${m.chatid || group.waGroupJid}, ${m.sender || null}, ${m.senderName || null},
-            ${m.messageType || 'text'}, ${m.text || m.caption || null},
+            ${tenantId}, ${group.id}, ${number.id}, ${uazapiId}, ${m.messageid || m.id},
+            ${m.chatid || group.waGroupJid}, ${m.sender || m.from || null}, ${senderName},
+            ${senderPhone}, ${m.messageType || 'conversation'}, ${m.text || m.caption || null},
             ${m.fileURL || m.fileUrl || m.file || m.mediaUrl || m.media || null}, ${m.fromMe || false}, ${m.isGroup ?? true},
             ${m.status || 'received'},
             ${m.messageTimestamp ? new Date(m.messageTimestamp > 9999999999 ? m.messageTimestamp : m.messageTimestamp * 1000) : new Date()}

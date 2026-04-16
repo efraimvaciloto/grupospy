@@ -1,5 +1,5 @@
 import sql from '../db/connection.js'
-import { enqueueAI, publishRealtimeEvent } from '../db/redis.js'
+import { enqueueAI, publishRealtimeEvent, cacheDel } from '../db/redis.js'
 import { syncGroupsForNumber, syncMessagesForNumber, syncContactsForNumber } from './syncService.js'
 
 // Mapeador: Message uazapi → nossa tabela
@@ -158,6 +158,8 @@ async function handleMessages(waNumber, data) {
       INSERT INTO messages ${sql(mapped)}
       ON CONFLICT (uazapi_id) DO NOTHING
     `
+
+    cacheDel(`messages:${group.id}:${waNumber.tenantId}:1:50:`)
 
     publishRealtimeEvent(waNumber.tenantId, {
       type: 'group:message',

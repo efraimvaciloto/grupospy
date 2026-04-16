@@ -1,6 +1,22 @@
 import sql from '../db/connection.js'
 import { authenticate, loadTenantPlan, requireFeature } from '../middleware/auth.js'
 import * as uazapi from '../services/uazapi.js'
+import { cacheGet, cacheSet, cacheDel } from '../db/redis.js'
+
+// Extrai phone do JID ou do uazapi_id como fallback
+function extractPhone(sender, uazapiId) {
+  if (sender) {
+    const cleaned = sender.replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/[^0-9]/g, '').slice(-13)
+    return cleaned || null
+  }
+  const prefix = String(uazapiId).split(':')[0]
+  return /^\d{8,15}$/.test(prefix) ? prefix : null
+}
+
+// Tenta múltiplos nomes de campo para o nome do remetente
+function extractName(m) {
+  return m.senderName || m.pushname || m.notifyName || m.author || m.name || null
+}
 
 export default async function groupRoutes(fastify) {
 
@@ -269,7 +285,14 @@ export default async function groupRoutes(fastify) {
 
   // GET /groups/:id/messages
   fastify.get('/groups/:id/messages', async (req) => {
-    const { page = 1, limit = 50, date } = req.query
+    const { page = 1, limit = 50, date, force } = req.query
+    const cacheKey = `messages:${req.params.id}:${req.tenantId}:${page}:${limit}:${date || ''}`
+
+    if (!force) {
+      const cached = await cacheGet(cacheKey)
+      if (cached) return cached
+    }
+
     const offset = (page - 1) * limit
 
     const where = date
@@ -293,7 +316,62 @@ export default async function groupRoutes(fastify) {
       WHERE group_id = ${req.params.id} AND tenant_id = ${req.tenantId} ${where}
     `
 
-    return { data: rows.reverse(), meta: { total: parseInt(count), page: parseInt(page) } }
+    const result = { data: rows.reverse(), meta: { total: parseInt(count), page: parseInt(page) } }
+    await cacheSet(cacheKey, result, 30)
+    return result
+  })
+
+  // POST /groups/:id/sync-messages — sincroniza mensagens de um grupo específico do uazapi
+  fastify.post('/groups/:id/sync-messages', async (req, reply) => {
+    const [group] = await sql`
+      SELECT g.*, w.uazapi_token, w.id as number_id
+      FROM groups g
+      JOIN wa_numbers w ON w.id = g.wa_number_id
+      WHERE g.id = ${req.params.id} AND g.tenant_id = ${req.tenantId}
+    `
+    if (!group) return reply.status(404).send({ error: 'Not found' })
+
+    const result = await uazapi.findMessages(group.uazapiToken, group.waGroupJid, 50, 0)
+    const msgs = result?.messages || []
+    let synced = 0
+
+    for (const m of msgs) {
+      if (!m.id) continue
+      const uazapiId = String(m.id).slice(0, 30)
+      const senderPhone = extractPhone(m.sender || m.from, uazapiId)
+      const senderName = extractName(m)
+      await sql`
+        INSERT INTO messages (
+          tenant_id, group_id, wa_number_id, uazapi_id, wa_message_id,
+          wa_chat_id, sender_jid, sender_name, sender_phone, message_type, body,
+          file_url, is_from_me, is_group, status, sent_at
+        ) VALUES (
+          ${req.tenantId}, ${group.id}, ${group.numberId}, ${uazapiId}, ${m.messageid || m.id},
+          ${m.chatid || group.waGroupJid}, ${m.sender || m.from || null}, ${senderName},
+          ${senderPhone}, ${m.messageType || 'conversation'}, ${m.text || m.caption || null},
+          ${m.fileURL || m.fileUrl || null}, ${m.fromMe || false}, true,
+          ${m.status || 'received'},
+          ${m.messageTimestamp ? new Date(m.messageTimestamp > 9999999999 ? m.messageTimestamp : m.messageTimestamp * 1000) : new Date()}
+        )
+        ON CONFLICT (uazapi_id) DO NOTHING
+      `
+      synced++
+    }
+
+    // Retroativo: preencher sender_phone a partir do uazapi_id em mensagens já salvas
+    await sql`
+      UPDATE messages
+      SET sender_phone = SPLIT_PART(uazapi_id, ':', 1)
+      WHERE group_id   = ${group.id}
+        AND tenant_id  = ${req.tenantId}
+        AND sender_phone IS NULL
+        AND is_from_me = false
+        AND uazapi_id LIKE '%:%'
+        AND SPLIT_PART(uazapi_id, ':', 1) ~ '^[0-9]{8,15}$'
+    `
+
+    await cacheDel(`messages:${group.id}:${req.tenantId}:1:50:`)
+    return { synced }
   })
 
   // POST /groups/:id/messages — enviar mensagem

@@ -199,4 +199,18 @@ export default async function numberRoutes(fastify) {
     const synced = await syncContactsForNumber(number, req.tenantId)
     return { synced }
   })
+
+  // POST /numbers/:id/configure-webhook — re-registrar webhook
+  fastify.post('/numbers/:id/configure-webhook', async (req, reply) => {
+    const [number] = await sql`
+      SELECT * FROM wa_numbers WHERE id = ${req.params.id} AND tenant_id = ${req.tenantId}
+    `
+    if (!number) return reply.status(404).send({ error: 'Not found' })
+
+    const webhookUrl = process.env.API_URL
+    if (!webhookUrl) return reply.status(500).send({ error: 'API_URL não configurada no servidor' })
+
+    await uazapi.configureWebhook(number.uazapiToken, number.uazapiInstanceId, webhookUrl)
+    return { success: true, webhookUrl: `${webhookUrl}/webhook/uazapi/${number.uazapiInstanceId}` }
+  })
 }

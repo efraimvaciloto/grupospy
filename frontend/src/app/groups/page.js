@@ -163,7 +163,7 @@ function ChatMessage({ msg }) {
   const isMe = msg.isFromMe || msg.wasSentByApi
   const time  = new Date(msg.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   const type  = (msg.messageType || '').toLowerCase()
-  const isText = type === 'conversation' || type === 'extendedtextmessage'
+  const isText = !type || type === 'text' || type === 'conversation' || type === 'extendedtextmessage'
 
   return (
     <div style={{
@@ -171,16 +171,16 @@ function ChatMessage({ msg }) {
       alignItems: isMe ? 'flex-end' : 'flex-start',
       marginBottom: 10,
     }}>
-      {!isMe && (
-        <span style={{ fontSize: 11, color: 'var(--brand)', marginBottom: 3, marginLeft: 4 }}>
-          {msg.senderName || msg.senderPhone}
-        </span>
-      )}
       <div style={{
         maxWidth: '70%', padding: '8px 12px', borderRadius: isMe ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
         background: isMe ? 'var(--brand-dim)' : 'var(--card)',
         border: '1px solid var(--border)', fontSize: 13, lineHeight: 1.5,
       }}>
+        {!isMe && (msg.senderName || msg.senderPhone) && (
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--brand)', marginBottom: 4 }}>
+            {msg.senderName || msg.senderPhone}
+          </div>
+        )}
         {!isText && <MediaContent msg={msg} />}
         {msg.body && <div>{msg.body}</div>}
         {!msg.body && isText && <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>mensagem vazia</span>}
@@ -896,7 +896,10 @@ export default function GroupsPage() {
                       </p>
                       <button
                         className="btn"
-                        onClick={() => loadMessages(selected.id)}
+                        onClick={async () => {
+                          await groupsApi.syncMessages(selected.id).catch(() => {})
+                          loadMessages(selected.id)
+                        }}
                         style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
                       >
                         <RefreshCw size={13} /> Tentar novamente

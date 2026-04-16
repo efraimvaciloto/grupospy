@@ -40,6 +40,18 @@ export async function subscribeRealtime(handler) {
   })
 }
 
+// ─── Cache helpers ─────────────────────────────────────────────
+export async function cacheGet(key) {
+  const val = await redis.get(key)
+  return val ? JSON.parse(val) : null
+}
+export async function cacheSet(key, value, ttlSeconds = 60) {
+  await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds)
+}
+export async function cacheDel(key) {
+  await redis.del(key)
+}
+
 const connection = { connection: redis }
 
 // ─── Filas ────────────────────────────────────────────────────

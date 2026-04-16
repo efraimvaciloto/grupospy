@@ -86,6 +86,7 @@ export const groups = {
   updateImage: (id, body)    => request(`/groups/${id}/image`, { method: 'PATCH', body }),
   updateSettings: (id, body) => request(`/groups/${id}/settings`, { method: 'PATCH', body }),
   leave:       (id)          => request(`/groups/${id}/leave`, { method: 'POST' }),
+  syncMessages:(id)          => request(`/groups/${id}/sync-messages`, { method: 'POST' }),
 }
 
 // ─── Analytics ────────────────────────────────────────────────
